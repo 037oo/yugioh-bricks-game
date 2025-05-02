@@ -1,15 +1,25 @@
 const canvas = document.getElementById("myCanvas");
 const ctx = canvas.getContext("2d");
+const playButton = document.getElementById("playButton");
+const menuOverlay = document.getElementById("menuOverlay");
+const scoreButton = document.getElementById("scoreButton");
+const infoButton = document.getElementById("infoButton");
+
+// Optimizacija za vse brskalnike
+canvas.style.transform = 'translateZ(0)';
+canvas.style.imageRendering = 'pixelated';
 
 canvas.width = 540;
 canvas.height = 470;
 canvas.style.display = "none";
 
+// Inicializacija igre
 let ballRadius = 13;
 let x = canvas.width / 2;
 let y = canvas.height - 60;
-let dx = 1.2;
-let dy = -1.2;
+let dx = 3.5;
+let dy = -3.5;
+
 
 const paddleHeight = 10;
 let basePaddleWidth = 100;
@@ -19,10 +29,7 @@ let paddleY = canvas.height - paddleHeight;
 
 let rightPressed = false;
 let leftPressed = false;
-let upPressed = false;
-let downPressed = false;
 let isPaused = false;
-
 let isDragging = false;
 let dragOffsetX = 0;
 
@@ -37,6 +44,9 @@ const brickOffsetLeft = 30;
 let score = 0;
 let gameOver = false;
 let animationId;
+let lastTime = 0;
+const targetFPS = 60;
+const frameDelay = 1000 / targetFPS;
 
 let comboHits = 0;
 let bonusActive = false;
@@ -47,7 +57,9 @@ let paddleColor = "black";
 let bonusTime = 0;
 
 let lastHits = [];
+let currentPlayerName = "";
 
+// Prednalaganje slik
 const brickImage = new Image();
 brickImage.src = 'slike/card.jpg';
 
@@ -62,6 +74,7 @@ for (let c = 0; c < brickColumnCount; c++) {
     }
 }
 
+// Event listeners
 document.addEventListener("keydown", keyDownHandler);
 document.addEventListener("keyup", keyUpHandler);
 canvas.addEventListener("mousedown", mouseDownHandler);
@@ -72,11 +85,12 @@ function keyDownHandler(e) {
     const key = e.key.toLowerCase();
     if (key === "arrowright" || key === "d") rightPressed = true;
     else if (key === "arrowleft" || key === "a") leftPressed = true;
-    else if (key === "w") upPressed = true;
-    else if (key === "s") downPressed = true;
     else if (key === "p") {
         isPaused = !isPaused;
-        if (!isPaused) requestAnimationFrame(draw);
+        if (!isPaused) {
+            lastTime = performance.now();
+            requestAnimationFrame(draw);
+        }
     }
 }
 
@@ -84,8 +98,6 @@ function keyUpHandler(e) {
     const key = e.key.toLowerCase();
     if (key === "arrowright" || key === "d") rightPressed = false;
     else if (key === "arrowleft" || key === "a") leftPressed = false;
-    else if (key === "w") upPressed = false;
-    else if (key === "s") downPressed = false;
 }
 
 function mouseDownHandler(e) {
@@ -93,10 +105,8 @@ function mouseDownHandler(e) {
     const mouseX = e.clientX - rect.left;
     const mouseY = e.clientY - rect.top;
 
-    if (
-        mouseX > paddleX && mouseX < paddleX + paddleWidth &&
-        mouseY > paddleY && mouseY < paddleY + paddleHeight
-    ) {
+    if (mouseX > paddleX && mouseX < paddleX + paddleWidth &&
+        mouseY > paddleY && mouseY < paddleY + paddleHeight) {
         isDragging = true;
         dragOffsetX = mouseX - paddleX;
     }
@@ -107,8 +117,7 @@ function mouseMoveHandler(e) {
         const rect = canvas.getBoundingClientRect();
         const mouseX = e.clientX - rect.left;
         paddleX = mouseX - dragOffsetX;
-        if (paddleX < 0) paddleX = 0;
-        if (paddleX + paddleWidth > canvas.width) paddleX = canvas.width - paddleWidth;
+        paddleX = Math.max(0, Math.min(paddleX, canvas.width - paddleWidth));
     }
 }
 
@@ -125,8 +134,8 @@ function drawBricks() {
     for (let c = 0; c < brickColumnCount; c++) {
         for (let r = 0; r < brickRowCount; r++) {
             if (bricks[c][r].status === 1) {
-                let brickX = c * (brickWidth + brickPadding) + brickOffsetLeft;
-                let brickY = r * (brickHeight + brickPadding) + brickOffsetTop;
+                const brickX = c * (brickWidth + brickPadding) + brickOffsetLeft;
+                const brickY = r * (brickHeight + brickPadding) + brickOffsetTop;
                 bricks[c][r].x = brickX;
                 bricks[c][r].y = brickY;
                 ctx.drawImage(brickImage, brickX, brickY, brickWidth, brickHeight);
@@ -145,13 +154,166 @@ function drawScore() {
     }
 }
 
+function saveScore(score, playerName) {
+    let highscores = JSON.parse(localStorage.getItem("highscores")) || [];
+    highscores.push({ 
+        name: playerName || "Neimenovan", 
+        score: score, 
+        time: new Date().toISOString() 
+    });
+    highscores.sort((a, b) => b.score - a.score);
+    localStorage.setItem("highscores", JSON.stringify(highscores));
+}
+
+scoreButton.addEventListener("click", showLeaderboard);
+
+function showLeaderboard() {
+    let highscores = JSON.parse(localStorage.getItem("highscores")) || [];
+    if (highscores.length === 0) {
+        Swal.fire("Lestvica", "Ni shranjenih rezultatov.", "info");
+        return;
+    }
+
+    const tableRows = highscores.map((entry, i) => {
+        const timeAgo = ((new Date() - new Date(entry.time)) / 1000).toFixed(1);
+        return `
+            <tr>
+                <td>${i + 1}</td>
+                <td>${entry.name}</td>
+                <td>${entry.score}</td>
+                <td>${timeAgo} s</td>
+            </tr>
+        `;
+    }).join("");
+
+    Swal.fire({
+        title: "Lestvica rezultatov",
+        html: `
+            <p style="margin-bottom: 10px; font-size: 12px;">Najboljši rezultati vseh igralcev.</p>
+            <table style="width:100%; border-collapse: collapse;">
+                <thead style="border-bottom: 1px solid #ccc;">
+                    <tr>
+                        <th>#</th>
+                        <th>Ime</th>
+                        <th>Točke</th>
+                        <th>Pred</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    ${tableRows}
+                </tbody>
+            </table>
+        `,
+        width: 600,
+        confirmButtonText: "Zapri"
+    });
+}
+
+infoButton.addEventListener("click", showInstructions);
+
+function showInstructions() {
+    Swal.fire({
+        title: 'Navodila za igranje',
+        html: `
+            <div style="text-align: left;">
+                <h3 style="color: #5d1b94;">Osnovne kontrole:</h3>
+                <ul>
+                    <li><b>Leva puščica</b> ali <b>A</b> - premik palice levo</li>
+                    <li><b>Desna puščica</b> ali <b>D</b> - premik palice desno</li>
+                    <li><b>Miška</b> - klik in povlecite palico</li>
+                    <li><b>P</b> - pavza</li>
+                </ul>
+                <h3 style="color: #5d1b94; margin-top: 20px;">Cilj igre:</h3>
+                <p>Uniči vse opeke na vrhu zaslona tako, da odbijaš žogico s palico.</p>
+                <h3 style="color: #5d1b94; margin-top: 20px;">Bonus sistem:</h3>
+                <ul>
+                    <li>Ko uničiš 5 opek v 6 sekundah, aktiviraš bonus!</li>
+                    <li>Bonus poveča palico in jo obarva v različne barve</li>
+                    <li>Bonus traja 20 sekund</li>
+                </ul>
+                <h3 style="color: #5d1b94; margin-top: 20px;">Točkovanje:</h3>
+                <p>Vsaka uničena opeka ti prinese 1 točko.</p>
+            </div>
+        `,
+        width: 600,
+        confirmButtonText: "Razumem",
+        confirmButtonColor: "#5d1b94",
+        background: "rgba(255, 255, 255, 0.9)",
+        backdrop: `
+            rgba(93,27,148,0.4)
+            url("https://media2.giphy.com/media/lEvAambCBZzoY/giphy.gif") 
+            center top/350px auto
+            no-repeat
+        `,
+        showClass: {
+            backdrop: 'swal2-noanimation'
+        }
+    });
+}
+
+playButton.addEventListener("click", startGame);
+
+function startGame() {
+    Swal.fire({
+        title: 'Vnesi svoje ime',
+        input: 'text',
+        inputLabel: 'Ime igralca',
+        inputPlaceholder: 'npr. DarkMagician123',
+        inputValidator: (value) => {
+            if (!value || value.trim() === "") return 'Ime je obvezno!';
+            if (value.length > 20) return 'Ime naj bo krajše od 20 znakov!';
+            return null;
+        },
+        showCancelButton: true,
+        confirmButtonText: "Začni igro",
+        cancelButtonText: "Prekliči"
+    }).then((result) => {
+        if (result.isConfirmed) {
+            currentPlayerName = result.value.trim();
+            resetGame();
+            menuOverlay.style.opacity = 0;
+            canvas.style.display = "block";
+            setTimeout(() => {
+                menuOverlay.style.display = "none";
+                lastTime = performance.now();
+                requestAnimationFrame(draw);
+            }, 500);
+        }
+    });
+}
+
+function handlePaddleCollision() {
+    if (y + dy > canvas.height - ballRadius - paddleHeight) {
+        if (x > paddleX && x < paddleX + paddleWidth) {
+            const relativeHit = (x - (paddleX + paddleWidth / 2)) / (paddleWidth / 2);
+            dx = relativeHit * 2.2;
+            dy = -Math.abs(dy);
+            comboHits = 0;
+            limitBallSpeed();
+        } else if (y + ballRadius >= canvas.height) {
+            endGame(false);
+        }
+    }
+}
+
+function limitBallSpeed() {
+    const maxSpeed = 7;
+    const speed = Math.sqrt(dx * dx + dy * dy);
+    if (speed > maxSpeed) {
+        dx = (dx / speed) * maxSpeed;
+        dy = (dy / speed) * maxSpeed;
+    }
+}
+
 function collisionDetection() {
     let hit = false;
     for (let c = 0; c < brickColumnCount; c++) {
         for (let r = 0; r < brickRowCount; r++) {
             const b = bricks[c][r];
             if (b.status === 1) {
-                if (x > b.x && x < b.x + brickWidth && y > b.y && y < b.y + brickHeight) {
+                if (x + ballRadius > b.x && x - ballRadius < b.x + brickWidth &&
+                    y + ballRadius > b.y && y - ballRadius < b.y + brickHeight) {
+                    
                     b.status = 0;
                     score++;
                     comboHits++;
@@ -168,9 +330,28 @@ function collisionDetection() {
                         bonusColorTimer = 0;
                     }
 
-                    const hitPointX = x - (b.x + brickWidth / 2);
-                    dx += hitPointX * 0.01;
-                    dy = -dy;
+                    const ballLeft = x - ballRadius;
+                    const ballRight = x + ballRadius;
+                    const ballTop = y - ballRadius;
+                    const ballBottom = y + ballRadius;
+
+                    const brickLeft = b.x;
+                    const brickRight = b.x + brickWidth;
+                    const brickTop = b.y;
+                    const brickBottom = b.y + brickHeight;
+
+                    const overlapLeft = ballRight - brickLeft;
+                    const overlapRight = brickRight - ballLeft;
+                    const overlapTop = ballBottom - brickTop;
+                    const overlapBottom = brickBottom - ballTop;
+
+                    const minOverlap = Math.min(overlapLeft, overlapRight, overlapTop, overlapBottom);
+
+                    if (minOverlap === overlapLeft || minOverlap === overlapRight) {
+                        dx = -dx;
+                    } else {
+                        dy = -dy;
+                    }
 
                     limitBallSpeed();
                 }
@@ -178,68 +359,48 @@ function collisionDetection() {
         }
     }
 
-    let bricksLeft = 0;
-    for (let c = 0; c < brickColumnCount; c++) {
-        for (let r = 0; r < brickRowCount; r++) {
-            if (bricks[c][r].status === 1) bricksLeft++;
-        }
-    }
-
-    if (bricksLeft === 0 && !gameOver) {
-        gameOver = true;
-        cancelAnimationFrame(animationId);
-        Swal.fire({
-            title: "YOU WIN!",
-            icon: "success",
-            showCancelButton: true,
-            confirmButtonText: "Play again",
-            cancelButtonText: "Back to Menu"
-        }).then((result) => {
-            if (result.isConfirmed) {
-                resetGame();
-                requestAnimationFrame(draw);
-            } else {
-                resetGame();
-                canvas.style.display = "none";
-                menuOverlay.style.display = "flex";
-                menuOverlay.style.opacity = 1;
-            }
-        });
+    if (bricks.every(col => col.every(brick => brick.status === 0))) {
+        endGame(true);
     }
 }
 
-function limitBallSpeed() {
-    const maxSpeed = 2.5;
-    const minSpeed = 1.0;
-    const speed = Math.sqrt(dx * dx + dy * dy);
-
-    if (speed > maxSpeed) {
-        const scale = maxSpeed / speed;
-        dx *= scale;
-        dy *= scale;
-    } else if (speed < minSpeed) {
-        const scale = minSpeed / speed;
-        dx *= scale;
-        dy *= scale;
-    }
+function endGame(isWin) {
+    gameOver = true;
+    cancelAnimationFrame(animationId);
+    saveScore(score, currentPlayerName);
+    
+    Swal.fire({
+        title: isWin ? "YOU WIN!" : "Game Over",
+        icon: isWin ? "success" : "error",
+        showCancelButton: true,
+        confirmButtonText: isWin ? "Play again" : "Try again",
+        cancelButtonText: "Back to Menu"
+    }).then((result) => {
+        if (result.isConfirmed) {
+            resetGame();
+            lastTime = performance.now();
+            requestAnimationFrame(draw);
+        } else {
+            resetGame();
+            canvas.style.display = "none";
+            menuOverlay.style.display = "flex";
+            menuOverlay.style.opacity = 1;
+        }
+    });
 }
 
 function resetGame() {
     x = canvas.width / 2;
     y = canvas.height - 60;
-    dx = 1.2;
-    dy = -1.2;
-    paddleWidth = basePaddleWidth;
+    dx = 3.5;
+    dy = -3.5;
     paddleX = (canvas.width - paddleWidth) / 2;
-    paddleY = canvas.height - paddleHeight;
     score = 0;
+    gameOver = false;
     comboHits = 0;
     bonusActive = false;
-    bonusTime = 0;
-    bonusColorIndex = 0;
-    bonusColorTimer = 0;
+    paddleWidth = basePaddleWidth;
     paddleColor = "black";
-    gameOver = false;
     lastHits = [];
 
     for (let c = 0; c < brickColumnCount; c++) {
@@ -249,100 +410,55 @@ function resetGame() {
     }
 }
 
-function handlePaddleCollision() {
-    if (y + dy > canvas.height - ballRadius) {
-        if (x > paddleX && x < paddleX + paddleWidth) {
-            const relativeHit = (x - (paddleX + paddleWidth / 2)) / (paddleWidth / 2);
-            dx = relativeHit * 2.2;
-            dy = -Math.abs(dy);
-            comboHits = 0;
-        } else if (y + ballRadius >= canvas.height) {
-            gameOver = true;
-            cancelAnimationFrame(animationId);
-            Swal.fire({
-                title: "Game Over",
-                icon: "error",
-                showCancelButton: true,
-                confirmButtonText: "Try again",
-                cancelButtonText: "Back to Menu"
-            }).then((result) => {
-                if (result.isConfirmed) {
-                    resetGame();
-                    requestAnimationFrame(draw);
-                } else {
-                    resetGame();
-                    canvas.style.display = "none";
-                    menuOverlay.style.display = "flex";
-                    menuOverlay.style.opacity = 1;
-                }
-            });
+function draw(timestamp) {
+    if (isPaused || gameOver) return;
+    
+    if (!lastTime) lastTime = timestamp;
+    const deltaTime = timestamp - lastTime;
+    
+    if (deltaTime >= frameDelay) {
+        ctx.clearRect(0, 0, canvas.width, canvas.height);
+
+        drawBricks();
+        drawBall();
+        drawPaddle();
+        drawScore();
+        collisionDetection();
+        handlePaddleCollision();
+
+        // Premik žogice s časovno prilagoditvijo
+        x += dx * (deltaTime / frameDelay);
+        y += dy * (deltaTime / frameDelay);
+
+        // Odboji od robov
+        if (x + dx > canvas.width - ballRadius || x + dx < ballRadius) {
+            dx = -dx;
         }
-    }
-}
-
-const playButton = document.getElementById("playButton");
-const infoButton = document.getElementById("infoButton");
-const menuOverlay = document.getElementById("menuOverlay");
-
-playButton.addEventListener("click", () => {
-    resetGame();
-    menuOverlay.style.opacity = 0;
-    canvas.style.display = "block";
-    setTimeout(() => {
-        menuOverlay.style.display = "none";
-        requestAnimationFrame(draw);
-    }, 500);
-});
-
-infoButton.addEventListener("click", () => {
-    Swal.fire({
-        title: "Navodila",
-        html: `Uporabi puščični tipki ali tipke W/A/S/D ali ← ↑ → ↓ za premikanje loparja.
-               Premikaš ga lahko tudi z miško, če klikneš in držiš lopar.
-               Cilj: razbij vse bricke. Če žogica pade mimo loparja, izgubiš.<br><br>
-               Bonus: Če uničiš 5 brickov v 6 sekundah, se lopar poveča za 20 sekund.`,
-        icon: "info",
-        confirmButtonText: "V redu"
-    });
-});
-
-function draw() {
-    if (gameOver || isPaused) return;
-
-    ctx.clearRect(0, 0, canvas.width, canvas.height);
-    drawBricks();
-    drawBall();
-    drawPaddle();
-    drawScore();
-    collisionDetection();
-    handlePaddleCollision();
-
-    if (x + dx < ballRadius || x + dx > canvas.width - ballRadius) dx = -dx;
-    if (y + dy < ballRadius) dy = -dy;
-
-    if (rightPressed && paddleX < canvas.width - paddleWidth) paddleX += 4;
-    if (leftPressed && paddleX > 0) paddleX -= 4;
-    if (upPressed && paddleY > 0) paddleY -= 2;
-    if (downPressed && paddleY < canvas.height - paddleHeight) paddleY += 2;
-
-    x += dx;
-    y += dy;
-
-    if (bonusActive) {
-        bonusColorTimer++;
-        if (bonusColorTimer >= 120) {
-            bonusColorIndex = (bonusColorIndex + 1) % bonusColors.length;
-            paddleColor = bonusColors[bonusColorIndex];
-            bonusColorTimer = 0;
+        if (y + dy < ballRadius) {
+            dy = -dy;
         }
 
-        if (bonusTime > 0) {
-            bonusTime--;
-        } else {
-            bonusActive = false;
-            paddleWidth = basePaddleWidth;
-            paddleColor = "black";
+        // Premikanje palice
+        if (rightPressed) paddleX += 5 * (deltaTime / frameDelay);
+        else if (leftPressed) paddleX -= 5 * (deltaTime / frameDelay);
+
+        paddleX = Math.max(0, Math.min(paddleX, canvas.width - paddleWidth));
+
+        // Bonus sistem
+        if (bonusActive) {
+            bonusTime -= deltaTime / frameDelay;
+            bonusColorTimer++;
+            if (bonusTime <= 0) {
+                bonusActive = false;
+                paddleWidth = basePaddleWidth;
+                paddleColor = "black";
+            } else if (bonusColorTimer % 15 === 0) {
+                bonusColorIndex = (bonusColorIndex + 1) % bonusColors.length;
+                paddleColor = bonusColors[bonusColorIndex];
+            }
         }
+
+        lastTime = timestamp;
     }
 
     animationId = requestAnimationFrame(draw);
