@@ -13,7 +13,7 @@ canvas.width = 540;
 canvas.height = 470;
 canvas.style.display = "none";
 
-// Inicializacija igre
+
 let ballRadius = 13;
 let x = canvas.width / 2;
 let y = canvas.height - 60;
@@ -59,7 +59,7 @@ let bonusTime = 0;
 let lastHits = [];
 let currentPlayerName = "";
 
-// Prednalaganje slik
+
 const brickImage = new Image();
 brickImage.src = 'slike/card.jpg';
 
@@ -74,7 +74,7 @@ for (let c = 0; c < brickColumnCount; c++) {
     }
 }
 
-// Event listeners
+
 document.addEventListener("keydown", keyDownHandler);
 document.addEventListener("keyup", keyUpHandler);
 canvas.addEventListener("mousedown", mouseDownHandler);
