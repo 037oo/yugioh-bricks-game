@@ -1,8 +1,8 @@
 🧱 Brick Breaker Arcade Game
 
 A classic brick breaker game built with JavaScript and HTML5 Canvas, enhanced with a dynamic bonus system, keyboard/mouse controls, and polished visuals.
-🎮 Features 
 ![slika](https://github.com/user-attachments/assets/88665377-1eac-4ffc-a930-2b64b4ddde26)
+🎮 Features 
 
 
     Smooth Paddle Controls
